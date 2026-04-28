@@ -24,8 +24,8 @@ config_collider:
       on_disp: 1 # Value to choose could be optics-dependent
 
       # Crab cavities
-      on_crab1: 0 # [urad]
-      on_crab5: 0 # [urad]
+      on_crab1: -190 # [urad]
+      on_crab5: -190 # [urad]
 
       # Magnets of the experiments
       on_alice_normalized: 1
@@ -95,7 +95,7 @@ config_collider:
     nemitt_x: 2.5e-6
     nemitt_y: 2.5e-6
     mask_with_filling_pattern:
-      pattern_fname: ../../filling_scheme/8b4e_1972b_1960_1178_1886_224bpi_12inj_800ns_bs200ns.json
+      pattern_fname:
       i_bunch_b1: 1963 # If not specified, the bunch with the worst schedule is chosen
       i_bunch_b2: 1963 # Same. A value for i_bunch_b1 and i_bunch_b2 must be specified if pattern_fname is specified
 
@@ -175,7 +175,7 @@ config_collider:
 
 config_simulation:
   # Collider file
-  collider_file: ../1_build_distr_and_collider/collider.json.zip
+  collider_file: ../1_build_distr_and_collider/collider/collider.json
 
   # Distribution in the normalized xy space
   particle_file: ../1_build_distr_and_collider/particles/00.parquet
@@ -195,9 +195,6 @@ dump_config_in_collider: false
 
 # Context for the simulation
 context: "cpu" # 'cupy' # opencl
-
-# Device number for GPU simulation
-device_number: # 0
 
 # Log
 log_file: tree_maker.log

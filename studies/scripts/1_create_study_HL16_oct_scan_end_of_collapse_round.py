@@ -1,15 +1,17 @@
 # ==================================================================================================
 # --- Imports
 # ==================================================================================================
-# Standard library imports
 import copy
 import itertools
+import json
 import os
 import time
 
-# Third party imports
 import numpy as np
 import yaml
+from create_study_functions.compute_bunch_schedule import (
+    get_worst_bunch,
+)
 
 # Local imports
 from generate_run_file import (
@@ -30,8 +32,8 @@ from tree_maker import initialize
 d_config_particles = {}
 
 # Radius of the initial particle distribution
-d_config_particles["r_min"] = 2
-d_config_particles["r_max"] = 10
+d_config_particles["r_min"] = 4
+d_config_particles["r_max"] = 8
 d_config_particles["n_r"] = 2 * 16 * (d_config_particles["r_max"] - d_config_particles["r_min"])
 
 # Number of angles for the initial particle distribution
@@ -56,8 +58,10 @@ d_config_mad = {"beam_config": {"lhcb1": {}, "lhcb2": {}}, "links": {}}
 # Optic file path (version, and round or flat)
 
 ### For v1.6 optics
-d_config_mad["links"]["acc-models-lhc"] = "../../../../external_dependencies/acc-models-lhc"
-d_config_mad["optics_file"] = "acc-models-lhc/strengths/ramp/opt_ramp_500_1500_thin.madx"
+d_config_mad["links"]["acc-models-lhc"] = "/eos/user/t/toppmugg/lhc_optics/acc-models-lhc"
+d_config_mad["optics_file"] = (
+    "/eos/user/t/toppmugg/lhc_optics/acc-models-lhc/additional_optics/opt_collapse_1100_1500_thin.madx"
+)
 d_config_mad["ver_hllhc_optics"] = 1.6
 
 
@@ -86,8 +90,8 @@ d_config_tune_and_chroma = {
     "dqy": {},
 }
 for beam in ["lhcb1", "lhcb2"]:
-    d_config_tune_and_chroma["qx"][beam] = 62.31
-    d_config_tune_and_chroma["qy"][beam] = 60.32
+    d_config_tune_and_chroma["qx"][beam] = np.nan  # ! scanned
+    d_config_tune_and_chroma["qy"][beam] = np.nan  # ! scanned
     d_config_tune_and_chroma["dqx"][beam] = 15.0
     d_config_tune_and_chroma["dqy"][beam] = 15.0
 
@@ -115,16 +119,23 @@ d_config_knobs["on_crab1"] = 0
 d_config_knobs["on_crab5"] = 0
 
 # Octupoles
-d_config_knobs["i_oct_b1"] = 60.0
-d_config_knobs["i_oct_b2"] = 60.0
+d_config_knobs["i_oct_b1"] = np.nan  # ! scanned
+d_config_knobs["i_oct_b2"] = np.nan  # ! scanned
+
+# Chroma
+#d_config_knobs["dq_knob_1"] = 0.025491257003238923  # used for initial guess in case matching fails
+#d_config_knobs["dq_knob_2"] = -0.04276944968307306  # 
+
+# Dispersion correction
+d_config_knobs["on_disp"] = 0
 
 ### leveling configuration
 
 # Leveling in IP 1/5
-d_config_leveling_ip1_5 = {"constraints": {}}
-d_config_leveling_ip1_5["luminosity"] = 2.0e34  # type: ignore
-d_config_leveling_ip1_5["constraints"]["max_intensity"] = 2.3e11
-d_config_leveling_ip1_5["constraints"]["max_PU"] = 160
+d_config_leveling_ip1_5 = {"constraints": {}, "skip_leveling": True}
+# d_config_leveling_ip1_5["luminosity"] = 2.0e34  # type: ignore
+# d_config_leveling_ip1_5["constraints"]["max_intensity"] = 2.3e11
+# d_config_leveling_ip1_5["constraints"]["max_PU"] = 160
 
 
 # Define dictionary for the leveling settings
@@ -146,28 +157,89 @@ d_config_leveling["ip8"]["luminosity"] = 2.0e33
 d_config_beambeam = {"mask_with_filling_pattern": {}}
 
 # Beam settings
-d_config_beambeam["num_particles_per_bunch"] = 1.4e11  # type: ignore
-d_config_beambeam["nemitt_x"] = 2.5e-6  # type: ignore
-d_config_beambeam["nemitt_y"] = 2.5e-6  # type: ignore
+d_config_beambeam["num_particles_per_bunch"] = 2.2e11  # type: ignore
+d_config_beambeam["nemitt_x"] = 2.3e-6  # type: ignore
+d_config_beambeam["nemitt_y"] = 2.3e-6  # type: ignore
 
 # Filling scheme (in json format)
 # The scheme should consist of a json file containing two lists of booleans (one for each beam),
 # representing each bucket of the LHC.
+filling_scheme_path = os.path.abspath(
+    "../filling_scheme/25ns_2760b_2748_2492_2574_288bpi_13inj_800ns_bs200ns.json"
+)
+
 # Alternatively, one can get a fill directly from LPC from, e.g.:
 # https://lpc.web.cern.ch/cgi-bin/fillTable.py?year=2023
 # In this page, get the fill number of your fill of interest, and use it to replace the XXXX in the
 # URL below before downloading:
 # https://lpc.web.cern.ch/cgi-bin/schemeInfo.py?fill=XXXX&fmt=json
-filling_scheme_path = os.path.abspath(
-    "../filling_scheme/8b4e_1972b_1960_1178_1886_224bpi_12inj_800ns_bs200ns.json"
-)
-# Add to config file
-d_config_beambeam["mask_with_filling_pattern"]["pattern_fname"] = filling_scheme_path
+# Unfortunately, the format is not the same as the one used by defaults in xmask, but it should
+# still be converted in the lines below (see with matteo.rufolo@cern.ch for questions, or if it
+# doesn't work).
 
-# Initialize bunch number
-# If set to None, it will be set automatically to the worst bunch when running 2nd generation
+# Load filling scheme
+if filling_scheme_path.endswith(".json"):
+    with open(filling_scheme_path, "r") as fid:
+        d_filling_scheme = json.load(fid)
+else:
+    raise ValueError("Only json filling schemes are supported")
+
+# If the filling scheme is already in the correct format, do nothing
+if "beam1" not in d_filling_scheme.keys() or "beam2" not in d_filling_scheme.keys():
+    raise ValueError(
+        "The filling scheme must contain two arrays of booleans, one for each beam, representing"
+        " the trains of bunches"
+    )
+
+
+# Add to config file
+d_config_beambeam["mask_with_filling_pattern"]["pattern_fname"] = (
+    filling_scheme_path  # If None, a full fill is assumed
+)
+
+# Initialize bunch number to None (will be set later)
 d_config_beambeam["mask_with_filling_pattern"]["i_bunch_b1"] = None
 d_config_beambeam["mask_with_filling_pattern"]["i_bunch_b2"] = None
+
+# Set this variable to False if you intend to scan the bunch number (but ensure both bunches indices
+# are defined later)
+check_bunch_number = True
+if check_bunch_number:
+    # Bunch number is ignored if pattern_fname is None (in which case the simulation considers all
+    # bunch elements). It must be specified otherwise)
+    # If the bunch number is None and pattern_name is defined, the bunch with the largest number of
+    # long-range interactions will be used
+    if d_config_beambeam["mask_with_filling_pattern"]["i_bunch_b1"] is None:
+        # Case the bunch number has not been provided
+        worst_bunch_b1 = get_worst_bunch(
+            filling_scheme_path, numberOfLRToConsider=26, beam="beam_1"
+        )
+        while d_config_beambeam["mask_with_filling_pattern"]["i_bunch_b1"] is None:
+            bool_inp = input(
+                "The bunch number for beam 1 has not been provided. Do you want to use the bunch"
+                " with the largest number of long-range interactions? It is the bunch number "
+                + str(worst_bunch_b1)
+                + " (y/n): "
+            )
+            if bool_inp == "y":
+                d_config_beambeam["mask_with_filling_pattern"]["i_bunch_b1"] = worst_bunch_b1
+            elif bool_inp == "n":
+                d_config_beambeam["mask_with_filling_pattern"]["i_bunch_b1"] = int(
+                    input("Please enter the bunch number for beam 1: ")
+                )
+
+    if d_config_beambeam["mask_with_filling_pattern"]["i_bunch_b2"] is None:
+        worst_bunch_b2 = get_worst_bunch(
+            filling_scheme_path, numberOfLRToConsider=26, beam="beam_2"
+        )
+        # For beam 2, just select the worst bunch by default, as the tracking of b2 is not available yet anyway
+        print(
+            "The bunch number for beam 2 has not been provided. By default, the worst bunch is"
+            " taken. It is the bunch number " + str(worst_bunch_b2)
+        )
+
+        d_config_beambeam["mask_with_filling_pattern"]["i_bunch_b2"] = worst_bunch_b2
+
 
 # ==================================================================================================
 # --- Generate dictionnary to encapsulate all base collider parameters (generation 2)
@@ -195,13 +267,21 @@ d_config_collider["config_beambeam"] = d_config_beambeam
 d_config_simulation = {}
 
 # Number of turns to track
-d_config_simulation["n_turns"] = 100
+d_config_simulation["n_turns"] = 1000000
 
 # Initial off-momentum
 d_config_simulation["delta_max"] = 27.0e-5
 
 # Beam to track (lhcb1 or lhcb2)
 d_config_simulation["beam"] = "lhcb1"
+
+# Tolerances tune and coupling
+d_config_simulation["tol_qx"] = 1e-4 # 1e-4
+d_config_simulation["tol_qy"] = 1e-4 # 1e-4
+d_config_simulation["tol_dqx"] = 0.05
+d_config_simulation["tol_dqy"] = 0.05
+d_config_simulation["tol_cminus"] = 1e-3 #1e-4
+d_config_simulation["tol_qknobs_step"] = 1e-6 # 1e-4
 
 # ==================================================================================================
 # --- Dump collider and collider configuration
@@ -219,13 +299,12 @@ dump_config_in_collider = False
 # optimal DA (e.g. tune, chroma, etc).
 # ==================================================================================================
 # Scan tune with step of 0.001 (need to round to correct for numpy numerical instabilities)
-array_qx = np.round(np.arange(62.305, 62.330, 0.001), decimals=4)[:5]
-array_qy = np.round(np.arange(60.305, 60.330, 0.001), decimals=4)[:5]
+array_qx = np.round(np.arange(62.305, 62.330, 0.001), decimals=4)
+array_I = np.linspace(-600, 300, 41, endpoint=True)
 
 # In case one is doing a tune-tune scan, to decrease the size of the scan, we can ignore the
 # working points too close to resonance. Otherwise just delete this variable in the loop at the end
 # of the script
-keep = "upper_triangle"  # "upper_triangle"  # 'lower_triangle', 'all'
 # ==================================================================================================
 # --- Make tree for the simulations (generation 1)
 #
@@ -254,25 +333,17 @@ children["base_collider"]["config_mad"] = d_config_mad
 # ! otherwise the dictionnary will be mutated for all the children.
 # ==================================================================================================
 track_array = np.arange(d_config_particles["n_split"])
-for idx_job, (track, qx, qy) in enumerate(itertools.product(track_array, array_qx, array_qy)):
-    # If requested, ignore conditions below the upper diagonal as they can't be reached in the LHC
-    if keep == "upper_triangle":
-        if qy < (qx - 2 + 0.0039):  # 0.039 instead of 0.04 to avoid rounding errors
-            continue
-    elif keep == "lower_triangle":
-        if qy >= (qx - 2 - 0.0039):
-            continue
-    else:
-        pass
-
+for idx_job, (track, qx, I) in enumerate(itertools.product(track_array, array_qx, array_I)):
     # Mutate the appropriate collider parameters
     for beam in ["lhcb1", "lhcb2"]:
         d_config_collider["config_knobs_and_tuning"]["qx"][beam] = float(qx)
-        d_config_collider["config_knobs_and_tuning"]["qy"][beam] = float(qy)
+        d_config_collider["config_knobs_and_tuning"]["qy"][beam] = float(qx - 2 + 0.005)
+        d_config_collider["config_knobs_and_tuning"]["knob_settings"]["i_oct_b1"] = float(I)
+        d_config_collider["config_knobs_and_tuning"]["knob_settings"]["i_oct_b2"] = float(I)
 
     # Complete the dictionnary for the tracking
     d_config_simulation["particle_file"] = f"../particles/{track:02}.parquet"
-    d_config_simulation["collider_file"] = "../collider.json.zip"
+    d_config_simulation["collider_file"] = "../collider.json"
 
     # Add a child to the second generation, with all the parameters for the collider and tracking
     children["base_collider"]["children"][f"xtrack_{idx_job:04}"] = {
@@ -293,7 +364,7 @@ config = yaml.safe_load(open("config.yaml"))
 config["root"]["children"] = children
 
 # Set miniconda environment path in the config
-config["root"]["setup_env_script"] = os.getcwd() + "/../../source_python.sh"
+#config["root"]["setup_env_script"] = os.getcwd() + "/../../source_python.sh"
 
 
 # Recursively define the context for the simulations
@@ -309,19 +380,11 @@ set_context(children, 1, config)
 # --- Build tree and write it to the filesystem
 # ==================================================================================================
 # Define study name
-study_name = "example_tunescan"
+study_name = "oct_scan_end_of_collapse_round_16_dQ15"
 
 # Creade folder that will contain the tree
 if not os.path.exists(f"../scans/{study_name}"):
     os.makedirs(f"../scans/{study_name}")
-else:
-    answer = input(
-        "The folder already exists. You might delete an existing study. "
-        "Do you want to overwrite it? [y/n]"
-    )
-    if answer != "y":
-        print("Aborting...")
-        exit()
 
 # Move to the folder that will contain the tree
 os.chdir(f"../scans/{study_name}")

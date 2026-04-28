@@ -1,113 +1,29 @@
 # Dynamics aperture study template
 
-This repository contains a template that allows users to compute the dynamics aperture of a collider
-under different parametric scenarios.
+This repository contains a template that allows users to compute the dynamic aperture of HL LHC 1.6 using Xsuite (latest version 0.48.4)
 
-Jobs can be efficiently stored and parallelized using the
-[Tree Maker](https://github.com/xsuite/tree_maker) package, while collider generation and particle tracking harness the power of [Xsuite](https://github.com/xsuite/xsuite).
+This is based on code from the following repositories:
+https://github.com/skostogl/example_DA_study/
+https://github.com/ColasDroin/DA_IPAC_2024/
+https://github.com/aradosla/example_DA_study/
+https://github.com/andreafornara/DA_study_template_afornara/
 
-ℹ️ If you do not need to do large parametric scans, this template is probably not what you're looking for! You should instead refer to the [simple DA study repo](https://github.com/ColasDroin/simple_DA_study), which adapts the template to run tracking simulation without doing any scan or parallelized cluster submission.
 
-## Quick installation guide
+## Quick use guide
 
-For most scans (with GPUs not involved), the small guide below should be enough to get you started. Otherwise, or if you encounter problems, please refer to the [full installation guide](doc/installation_guide.md).
+Update scripts/config.yaml. Change eos_python to point to your python environment. A packaged python environment using conda pack is included as envs.tar.gz
 
-Ensure Python (at least 3.9) is available on your machine. If not, install it with, for instance, miniforge or miniconda. Since this Python version will be your base one, it is recommended to install it in a fast location (for CERN users, *not AFS*), such that it can be used by all your projects (creating virtual environment everytime).
+Modify scripts/1_create_study_$$.py to match your requirements for the study. Two examples are included, representing an octupole and a tune scan. Some issues were encountered with relative paths for the optics files - I suggest uploading optics files to eos so a static absolute path can be provided. Check the paths for the optics files and base sequence. Change the study name to a unique string.
 
-For instance, to install Python with miniforge in your home directory, run the following commands:
+Modify scripts/2_run_jobs.py and scripts/3_postprocess.py to change the study name at the bottom to what you set in the previous step.
 
-```bash
-cd
-wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh
-bash Miniforge3-Linux-x86_64.sh -b  -p ./miniforge -f
-rm -f Miniforge3-Linux-x86_64.sh
-source miniforge/bin/activate
-```
+When running, first run your 1_create_study.py, then after it completes, run your 2_run_jobs.py. Wait for that to complete generation 1 (distribution/collider building) before launching 2_run_jobs.py again. Finally, after this completes, run 3_postprocess.py (studies/analysis should contain an example plotting notebook)
 
-If you plan to submit jobs to CERN HTCondor, now move to your AFS space (e.g. ```cd /afs/cern.ch/work/c/username/private```).
+## Known issues
 
-In any case, run the following command to clone the repository and all the relevant submodules.
+A small number of instances fail in the beam beam configuration steps. This is a closed orbit search failure within a twiss() function call from inside Xsuite's multiline legacy functions. The 6d closed orbit search is less robust in the current version of Xsuite compared to the version used in 2024, but more accurate in describing certain physical phenomena. Modifying this to a twiss4d() call would fix the problem, but as this multiline legacy support is deprecated, this is a low priority issue (could be fixed if needed by installing xsuite development version and modifying the call manually).
 
-```bash
-git clone --recurse-submodules https://github.com/xsuite/DA_study_template.git my_DA_study
-```
 
-If not already done, you can install Poetry (system-wide) with the command below. Before running it, ensure that the Python environment you want to use is isolated from your project (poetry should not be installed in the same environment as the one you will use for the project).
-
-```bash
-curl -sSL https://install.python-poetry.org | python3 -
-```
-
-Note that, at this point, you might need to add Poetry to your PATH. Simply follow what the Poetry installer tells you to do. For instance, for bash, you will have to run something like:
-
-```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-If everything worked, impose the virtual environment to be created in the repository folder (needed so that jobs from HTCondor can access your Python distribution, especially if you don't plan on using a docker image) by running the following command:
-
-```bash
-poetry config virtualenvs.in-project true
-```
-
-Finally, move to your cloned repository and install the dependencies by running the following command:
-
-```bash
-cd my_DA_study
-poetry install
-```
-
-You can make Xsuite faster with the following command:
-
-```bash
-poetry run xsuite-prebuild regenerate
-```
-
-In the future, don't forget to to activate the virtual environment when accessing the repository from a fresh terminal session with:
-
-```bash
-poetry shell
-```
-
-You can ensure that everything works by:
-  
-1. Creating a study with the following command:
-  
-    ```bash
-    cd studies/scripts
-    python 1_create_study.py
-    ```
-
-2. Running the jobs with the following command:
-  
-    ```bash
-    python 2_run_jobs.py
-    ```
-
-    By default, you will need to run this command twice: first time, the base collider will be built locally, and the second time, the tracking jobs (by default, a small tune scan with only 50000 turns) will be run on HTCondor. You can check the job status by rerunning the command as many times as needed.
-
-3. Postprocessing the results with the following command:
-  
-    ```bash
-    python 3_postprocess.py
-    ```
-
-    At this point, you should have an output parquet file in the ```studies/scans/study_name``` folder.
-
-## How to use this template
-
-You can refer to the [how-to guide](doc/how_to_use.md) for more information on how to use this simulation template.
-
-## Using computing clusters and/or GPUs
-
-You can refer to [clusters and GPUs documentation](doc/clusters_and_GPUs.md) for more information on how to use computing clusters and GPUs.
-
-## Previous documentation
-
-More information, although possibly outdated, can be gathered from the explanations provided in previous versions of this repository, e.g. [in the previous README](https://github.com/xsuite/example_DA_study/blob/release/v0.1.1/README.md) and [the Tree Maker tutorial](https://github.com/xsuite/example_DA_study/blob/release/v0.1.1/tree_tutorial.md).
-
-The code is now well formatted and well commented, such that any question should be relatively easily answered by looking at the code itself. If you have any question, do not hesitate to contact me (colas.noe.droin at cern.ch) or open an issue.
 
 ## Parameters that can be scanned
 
@@ -127,3 +43,6 @@ It should be relatively easy to accomodate the scripts for other parameters.
 ## License
 
 This repository is licensed under the MIT license. Please refer to the [LICENSE](LICENSE) file for more information.
+
+# 
+add in Manifest.in of xmak: recursive-include xmask/lhc *

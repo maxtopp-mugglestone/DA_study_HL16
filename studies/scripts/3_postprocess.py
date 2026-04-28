@@ -29,11 +29,12 @@ def get_particles_data(root):
         for node_child in node.children:
             try:
                 df_output = pd.read_parquet(f"{node_child.get_abs_path()}/output_particles.parquet")
+                print(node_child)
             except Exception as e:
-                print(e)
-                logging.warning(
-                    node_child.get_abs_path() + " does not have output_particles.parquet"
-                )
+                #print(e)
+                #logging.warning(
+                #    node_child.get_abs_path() + " does not have output_particles.parquet"
+                #)
                 continue
 
             # Register paths and names of the nodes
@@ -104,7 +105,7 @@ if __name__ == "__main__":
     start = time.time()
 
     # Load Data
-    study_name = "example_tunescan"
+    study_name = "ext_oct_scan_end_of_collapse_round_16_dQ20"
     fix = f"/../scans/{study_name}"
     root = tree_maker.tree_from_json(fix[1:] + "/tree_maker.json")
     # Add suffix to the root node path to handle scans that are not in the root directory
@@ -119,7 +120,7 @@ if __name__ == "__main__":
         "qy": ["config_knobs_and_tuning", "qy", "lhcb1"],
         "dqx": ["config_knobs_and_tuning", "dqx", "lhcb1"],
         "dqy": ["config_knobs_and_tuning", "dqy", "lhcb1"],
-        "i_oct": ["config_knobs_and_tuning", "knob_settings", "i_oct_b1"],
+        "i_oct_b1": ["config_knobs_and_tuning", "knob_settings", "i_oct_b1"],
         "i_bunch": ["config_beambeam", "mask_with_filling_pattern", "i_bunch_b1"],
         "num_particles_per_bunch": ["config_beambeam", "num_particles_per_bunch"],
     }
@@ -128,7 +129,7 @@ if __name__ == "__main__":
     l_df_output = reorganize_particles_data(l_df_output, dic_parameters_of_interest)
 
     # Merge and group by parameters of interest
-    l_group_by_parameters = ["beam", "name base collider", "qx", "qy"]
+    l_group_by_parameters = ["beam", "name base collider", "qx", "qy", "i_oct_b1"]
     l_parameters_to_keep = [
         "normalized amplitude in xy-plane",
         "qx",
@@ -136,7 +137,7 @@ if __name__ == "__main__":
         "dqx",
         "dqy",
         "i_bunch",
-        "i_oct",
+        "i_oct_b1",
         "num_particles_per_bunch",
     ]
     only_keep_lost_particles = True
@@ -148,4 +149,5 @@ if __name__ == "__main__":
     # Save data and print time
     df_final.to_parquet(f"../scans/{study_name}/da.parquet")
     end = time.time()
+    print(df_final["i_oct_b1"].unique())
     print("Elapsed time: ", end - start)

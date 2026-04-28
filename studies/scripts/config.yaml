@@ -3,23 +3,51 @@
   # Following parameter is ignored when run_on is not htc_docker or slurm_docker
   singularity_image: "/cvmfs/unpacked.cern.ch/gitlab-registry.cern.ch/cdroin/da-study-docker:74ed75ec"
   # use_eos_for_large_files: true
-  # eos_path: "root://eosuser.cern.ch//eos/user/c/cdroin/HTC"
+  eos_python: "root://eosuser.cern.ch//eos/user/t/toppmugg/envs/envs.tar.gz"
   generations:
     1: # Build the particle distribution and base collider
       job_folder: "../../template_jobs/1_build_distr_and_collider"
       job_executable: 1_build_distr_and_collider.py
       files_to_clone: # relative to the template folder
         - optics_specific_tools.py
-      run_on: "local_pc" # "local_pc" 'htc_docker' #'htc' #'slurm' #'slurm_docker'
+      files_to_copy_node:
+        - 1_build_distr_and_collider.py
+        - config.yaml
+        - optics_specific_tools.py
+          #- "/afs/cern.ch/work/a/aradosla/private/example_DA_study_50Hz/studies/optics/optics.zip"
+      files_to_return:
+        - collider.json.zip
+        - output_python.txt
+        - error_python.txt
+        - tree_maker.json
+        - tree_maker.log
+        - particles
+        - config_gen1.yaml
+      run_on: "htc" # "local_pc" 'htc_docker' #'htc' #'slurm' #'slurm_docker'
       context: "cpu" # 'cupy' # opencl # how to run the simulation
       # Following parameter is ignored when run_on is not htc or htc_docker
-      htc_job_flavor: "espresso" # optional parameter to define job flavor, default is espresso
+      htc_job_flavor: "microcentury" # optional parameter to define job flavor, default is espresso
     2: # Launch the pymask and prepare the colliders
       job_folder: "../../template_jobs/2_configure_and_track"
       job_executable: 2_configure_and_track.py # has to be a python file
       files_to_clone:
         - misc.py
+      files_to_copy_node:
+        - 2_configure_and_track.py
+        - config.yaml
+        - misc.py
+        - "/afs/cern.ch/work/t/toppmugg/private/da_ar/studies/filling_scheme"
+        - "../config_gen1.yaml"
+        - "../collider.json.zip"
+        - "../particles"
+      files_to_return:
+        - output_particles.parquet
+        - output_python.txt
+        - error_python.txt
+        - tree_maker.json
+        - tree_maker.log
+        - config_final.yaml
       context: "cpu" # 'cupy' # opencl # how to run the simulation
-      run_on: "htc_docker" # 'local_pc' # 'htc_docker' #'htc' #'slurm' #'slurm_docker'
+      run_on: "htc" # 'local_pc' # 'htc_docker' #'htc' #'slurm' #'slurm_docker'
       # Following parameter is ignored when run_on is not htc or htc_docker
-      htc_job_flavor: "microcentury" # optional parameter to define job flavor, default is espresso
+      htc_job_flavor: "tomorrow" # optional parameter to define job flavor, default is espresso
